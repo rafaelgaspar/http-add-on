@@ -22,15 +22,17 @@ type Routing struct {
 	next           http.Handler
 	reader         client.Reader
 	tlsEnabled     bool
+	clusterDomain  string
 	requestTimeout time.Duration
 }
 
-func NewRouting(next http.Handler, routingTable routing.Table, reader client.Reader, tlsEnabled bool, requestTimeout time.Duration) *Routing {
+func NewRouting(next http.Handler, routingTable routing.Table, reader client.Reader, tlsEnabled bool, clusterDomain string, requestTimeout time.Duration) *Routing {
 	return &Routing{
 		routingTable:   routingTable,
 		next:           next,
 		reader:         reader,
 		tlsEnabled:     tlsEnabled,
+		clusterDomain:  clusterDomain,
 		requestTimeout: requestTimeout,
 	}
 }
@@ -160,8 +162,13 @@ func (rm *Routing) resolveUpstreamURL(ctx context.Context, svc httpv1beta.Servic
 		scheme = "https"
 	}
 
+	host := fmt.Sprintf("%s.%s", svc.Name, namespace)
+	if rm.clusterDomain != "" {
+		host = fmt.Sprintf("%s.%s.svc.%s", svc.Name, namespace, rm.clusterDomain)
+	}
+
 	return &url.URL{
 		Scheme: scheme,
-		Host:   fmt.Sprintf("%s.%s:%d", svc.Name, namespace, port),
+		Host:   fmt.Sprintf("%s:%d", host, port),
 	}, nil
 }

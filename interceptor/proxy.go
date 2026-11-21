@@ -91,6 +91,7 @@ func BuildProxyHandler(cfg *ProxyHandlerConfig) http.Handler {
 		cfg.RoutingTable,
 		cfg.Reader,
 		cfg.ServingTLS != nil,
+		cfg.Serving.ClusterDomain,
 		cfg.Timeouts.Request,
 	)
 

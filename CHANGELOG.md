@@ -36,6 +36,7 @@ This changelog keeps track of work items that have been completed and are ready 
 
 ### New
 
+- **Interceptor**: Add optional `KEDA_CLUSTER_DOMAIN` to use `{service}.{namespace}.svc.{domain}` for TLS upstream hostnames and SNI when proxy TLS is enabled
 - **General**: Add NetworkPolicy examples for securing KEDA HTTP Add-on components ([#1602](https://github.com/kedacore/http-add-on/issues/1602))
 
 ### Improvements

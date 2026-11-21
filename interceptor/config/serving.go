@@ -55,6 +55,11 @@ type Serving struct {
 	// (NetworkPolicy, session affinity, topology-aware routing).
 	DirectPodRouting bool `env:"KEDA_HTTP_DIRECT_POD_ROUTING" envDefault:"true"`
 
+	// ClusterDomain, when set, extends upstream hostnames to
+	// {service}.{namespace}.svc.{ClusterDomain} for TLS SNI and Host headers.
+	// Empty keeps the legacy {service}.{namespace} form.
+	ClusterDomain string `env:"KEDA_CLUSTER_DOMAIN" envDefault:""`
+
 	// ColdStartMaxPendingRequests is the default limit on requests held per
 	// route while its backend has no ready endpoints (e.g. during
 	// scale-from-zero). Additional requests are rejected with 503 or served

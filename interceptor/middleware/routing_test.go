@@ -33,7 +33,7 @@ var _ = Describe("RoutingMiddleware", func() {
 			upstreamHandler.Handle("/upstream", emptyHandler)
 			fakeClient := fake.NewClientBuilder().WithScheme(cache.NewScheme()).Build()
 
-			rm := NewRouting(upstreamHandler, routingTable, fakeClient, false, requestTimeout)
+			rm := NewRouting(upstreamHandler, routingTable, fakeClient, false, "", requestTimeout)
 			Expect(rm).NotTo(BeNil())
 			Expect(rm.routingTable).To(Equal(routingTable))
 			Expect(rm.next).To(Equal(upstreamHandler))
@@ -94,7 +94,7 @@ var _ = Describe("RoutingMiddleware", func() {
 			upstreamHandler = http.NewServeMux()
 			routingTable = routingtest.NewTable()
 			client = fake.NewClientBuilder().WithScheme(cache.NewScheme()).Build()
-			routingMiddleware = NewRouting(upstreamHandler, routingTable, client, false, requestTimeout)
+			routingMiddleware = NewRouting(upstreamHandler, routingTable, client, false, "", requestTimeout)
 
 			w = httptest.NewRecorder()
 
@@ -136,7 +136,7 @@ var _ = Describe("RoutingMiddleware", func() {
 						Target: httpv1beta1.TargetRef{Service: "my-svc", Port: 8443},
 					},
 				}
-				tlsMiddleware := NewRouting(upstreamHandler, routingTable, client, true, requestTimeout)
+				tlsMiddleware := NewRouting(upstreamHandler, routingTable, client, true, "", requestTimeout)
 
 				var capturedServerName string
 				upstreamHandler.Handle(path, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -147,6 +147,26 @@ var _ = Describe("RoutingMiddleware", func() {
 				routingTable.Memory[host] = irTLS
 				tlsMiddleware.ServeHTTP(w, r)
 				Expect(capturedServerName).To(Equal("my-svc.default"))
+			})
+
+			It("uses cluster domain in server name when configured", func() {
+				irTLS := &httpv1beta1.InterceptorRoute{
+					ObjectMeta: metav1.ObjectMeta{Namespace: "cursor"},
+					Spec: httpv1beta1.InterceptorRouteSpec{
+						Target: httpv1beta1.TargetRef{Service: "cursor-desktop", Port: 8443},
+					},
+				}
+				tlsMiddleware := NewRouting(upstreamHandler, routingTable, client, true, "cluster.local.example.test", requestTimeout)
+
+				var capturedServerName string
+				upstreamHandler.Handle(path, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					capturedServerName = util.UpstreamServerNameFromContext(r.Context())
+					w.WriteHeader(http.StatusOK)
+				}))
+
+				routingTable.Memory[host] = irTLS
+				tlsMiddleware.ServeHTTP(w, r)
+				Expect(capturedServerName).To(Equal("cursor-desktop.cursor.svc.cluster.local.example.test"))
 			})
 		})
 
@@ -167,7 +187,7 @@ var _ = Describe("RoutingMiddleware", func() {
 		When("route is found with portName", func() {
 			It("routes to the upstream handler", func() {
 				clientWithSvc := fake.NewClientBuilder().WithScheme(cache.NewScheme()).WithObjects(svc).Build()
-				routingMiddleware = NewRouting(upstreamHandler, routingTable, clientWithSvc, false, requestTimeout)
+				routingMiddleware = NewRouting(upstreamHandler, routingTable, clientWithSvc, false, "", requestTimeout)
 
 				var (
 					sc = http.StatusTeapot
@@ -197,7 +217,7 @@ var _ = Describe("RoutingMiddleware", func() {
 		When("route is found with numeric port and the Service has a named port", func() {
 			It("resolves the portName and stores it in context", func() {
 				clientWithSvc := fake.NewClientBuilder().WithScheme(cache.NewScheme()).WithObjects(svc).Build()
-				routingMiddleware = NewRouting(upstreamHandler, routingTable, clientWithSvc, false, requestTimeout)
+				routingMiddleware = NewRouting(upstreamHandler, routingTable, clientWithSvc, false, "", requestTimeout)
 
 				irWithNumericPort := &httpv1beta1.InterceptorRoute{
 					ObjectMeta: metav1.ObjectMeta{
@@ -298,7 +318,7 @@ var _ = Describe("RoutingMiddleware", func() {
 
 		When("route is found with zero request timeout", func() {
 			It("does not set a context deadline", func() {
-				noTimeoutMiddleware := NewRouting(upstreamHandler, routingTable, client, false, 0)
+				noTimeoutMiddleware := NewRouting(upstreamHandler, routingTable, client, false, "", 0)
 
 				var hasDeadline bool
 				upstreamHandler.Handle(path, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -403,7 +423,7 @@ func TestRouting_PopulatesRouteInfo(t *testing.T) {
 				table.Memory[host] = tc.ir
 			}
 
-			middleware := NewRouting(inner, table, fakeClient, false, 0)
+			middleware := NewRouting(inner, table, fakeClient, false, "", 0)
 
 			info := &routeInfo{}
 			req := httptest.NewRequest("GET", "/path", nil)

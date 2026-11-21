@@ -362,3 +362,4 @@ admin/Cargo.lock
 
 # ko publish digest refs written by Makefile publish-* targets (CI artifacts)
 *.digest
+.fork-pack/

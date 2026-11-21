@@ -1,3 +1,15 @@
+## rafaelgaspar fork
+
+This repository is a [rafaelgaspar](https://github.com/rafaelgaspar) fork of [kedacore/http-add-on](https://github.com/kedacore/http-add-on). Integration releases ship from the **`rafaelgaspar`** branch as `ghcr.io/rafaelgaspar/http-add-on-interceptor:vX.Y.Z-rafaelgaspar.N` (and `latest` on publish).
+
+| Layer | Branch | Notes |
+| --- | --- | --- |
+| Fork infra | `feat/rafaelgaspar` | fork-pack, GHCR interceptor, tag-bump |
+| Debian forkly + latest Go | `feat/latest-golang-and-forky` | `go.dev` toolchain on forkly build stage |
+
+Fork workflow: `.cursor/skills/rafaelgaspar-fork/SKILL.md` (from [fork-pack](https://github.com/rafaelgaspar/fork-pack)).
+
+
 <!-- START doctoc generated TOC please keep comment here to allow auto update -->
 <!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
 **Table of Contents** _generated with [DocToc](https://github.com/thlorenz/doctoc)_

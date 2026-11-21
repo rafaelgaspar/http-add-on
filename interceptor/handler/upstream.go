@@ -2,12 +2,14 @@ package handler
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"net"
 	"net/http"
 	"net/http/httputil"
 	"time"
 
+	"github.com/quic-go/quic-go/http3"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -32,12 +34,21 @@ var (
 type Upstream struct {
 	defaultTransportPool   *kedahttp.TransportPool
 	http2OnlyTransportPool *kedahttp.TransportPool
+	http3Transport         *http3.Transport
 	reader                 client.Reader
 	responseHeaderTimeout  time.Duration
 	tracingCfg             config.Tracing
+	http3ProxyEnabled      bool
 }
 
-func NewUpstream(baseTransport *http.Transport, reader client.Reader, tracingCfg config.Tracing, responseHeaderTimeout time.Duration) *Upstream {
+func NewUpstream(
+	baseTransport *http.Transport,
+	reader client.Reader,
+	tracingCfg config.Tracing,
+	responseHeaderTimeout time.Duration,
+	outboundTLS *tls.Config,
+	http3ProxyEnabled bool,
+) *Upstream {
 	if baseTransport == nil {
 		panic("baseTransport must not be nil")
 	}
@@ -45,13 +56,23 @@ func NewUpstream(baseTransport *http.Transport, reader client.Reader, tracingCfg
 		panic("reader must not be nil")
 	}
 	defaultTransport, http2OnlyTransport := kedahttp.NewTransports(baseTransport)
+	var h3Transport *http3.Transport
+	if http3ProxyEnabled && outboundTLS != nil {
+		h3TLS := outboundTLS.Clone()
+		if len(h3TLS.NextProtos) == 0 {
+			h3TLS.NextProtos = []string{http3.NextProtoH3}
+		}
+		h3Transport = &http3.Transport{TLSClientConfig: h3TLS}
+	}
 
 	return &Upstream{
 		defaultTransportPool:   kedahttp.NewTransportPool(defaultTransport),
 		http2OnlyTransportPool: kedahttp.NewTransportPool(http2OnlyTransport),
+		http3Transport:         h3Transport,
 		reader:                 reader,
 		responseHeaderTimeout:  responseHeaderTimeout,
 		tracingCfg:             tracingCfg,
+		http3ProxyEnabled:      http3ProxyEnabled,
 	}
 }
 
@@ -87,11 +108,14 @@ func (uh *Upstream) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	pool := uh.defaultTransportPool
-	if uh.requiresHTTP2(ctx, ir) {
-		pool = uh.http2OnlyTransportPool
+	var transport http.RoundTripper
+	if uh.http3ProxyEnabled && uh.requiresHTTP3(ctx, ir) && uh.http3Transport != nil {
+		transport = uh.http3Transport
+	} else if uh.requiresHTTP2(ctx, ir) {
+		transport = uh.http2OnlyTransportPool.Get(responseHeaderTimeout)
+	} else {
+		transport = uh.defaultTransportPool.Get(responseHeaderTimeout)
 	}
-	transport := pool.Get(responseHeaderTimeout)
 
 	var rt http.RoundTripper = transport
 	if uh.tracingCfg.Enabled {
@@ -184,4 +208,36 @@ func matchesTargetPort(target httpv1beta1.TargetRef, port corev1.ServicePort) bo
 		return port.Port == target.Port
 	}
 	return port.Name == target.PortName
+}
+
+func (uh *Upstream) requiresHTTP3(ctx context.Context, ir *httpv1beta1.InterceptorRoute) bool {
+	if ir == nil || uh.reader == nil {
+		return false
+	}
+
+	var svc corev1.Service
+	err := uh.reader.Get(ctx, types.NamespacedName{
+		Namespace: ir.Namespace,
+		Name:      ir.Spec.Target.Service,
+	}, &svc)
+	if err != nil {
+		util.LoggerFromContext(ctx).Error(err, "failed to look up Service for HTTP/3, using default transport",
+			"service", ir.Spec.Target.Service,
+			"namespace", ir.Namespace,
+		)
+		return false
+	}
+
+	for _, port := range svc.Spec.Ports {
+		if port.Protocol != corev1.ProtocolUDP {
+			continue
+		}
+		if matchesTargetPort(ir.Spec.Target, port) {
+			return true
+		}
+		if ir.Spec.Target.Port != 0 && port.Port == ir.Spec.Target.Port {
+			return true
+		}
+	}
+	return false
 }

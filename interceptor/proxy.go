@@ -19,6 +19,7 @@ import (
 	"github.com/kedacore/http-add-on/pkg/queue"
 	"github.com/kedacore/http-add-on/pkg/routing"
 	"github.com/kedacore/http-add-on/pkg/util"
+	"github.com/quic-go/webtransport-go"
 )
 
 // ProxyHandlerConfig contains all dependencies for building the proxy handler chain.
@@ -34,6 +35,11 @@ type ProxyHandlerConfig struct {
 	OutboundTLS  *tls.Config
 	Tracing      config.Tracing
 	Instruments  *metrics.Instruments
+
+	// WebTransportServer is set when UDP HTTP/3 is enabled on the proxy port.
+	WebTransportServer *webtransport.Server
+	// HTTP3ProxyEnabled selects HTTP/3 RoundTripper for UDP backend Service ports.
+	HTTP3ProxyEnabled bool
 
 	// dialAddressOverride redirects all dial attempts to this address (for testing).
 	// If empty, dials to the original target address.
@@ -69,9 +75,13 @@ func BuildProxyHandler(cfg *ProxyHandlerConfig) http.Handler {
 	}
 
 	// Build handler chain (innermost to outermost)
-	upstream := handler.NewUpstream(baseTransport, cfg.Reader, cfg.Tracing, cfg.Timeouts.ResponseHeader)
+	upstream := handler.NewUpstream(baseTransport, cfg.Reader, cfg.Tracing, cfg.Timeouts.ResponseHeader, cfg.OutboundTLS, cfg.HTTP3ProxyEnabled)
+	var tailHandler http.Handler = upstream
+	if cfg.WebTransportServer != nil {
+		tailHandler = handler.NewWebTransportBridge(upstream, cfg.WebTransportServer, cfg.OutboundTLS)
+	}
 
-	var h http.Handler = middleware.NewEndpointResolver(upstream, cfg.ReadyCache, middleware.EndpointResolverConfig{
+	var h http.Handler = middleware.NewEndpointResolver(tailHandler, cfg.ReadyCache, middleware.EndpointResolverConfig{
 		ReadinessTimeout:      cfg.Timeouts.Readiness,
 		EnableColdStartHeader: cfg.Serving.EnableColdStartHeader,
 		DirectPodRouting:      cfg.Serving.DirectPodRouting,
@@ -84,7 +94,7 @@ func BuildProxyHandler(cfg *ProxyHandlerConfig) http.Handler {
 
 	h = middleware.NewCounting(h, cfg.Queue, cfg.Instruments)
 
-	h = middleware.NewStaticRouting(h, upstream, cfg.ReadyCache, cfg.Reader)
+	h = middleware.NewStaticRouting(h, tailHandler, cfg.ReadyCache, cfg.Reader)
 
 	h = middleware.NewRouting(
 		h,

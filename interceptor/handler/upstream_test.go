@@ -165,7 +165,7 @@ func TestForwarderSuccess(t *testing.T) {
 	req = util.RequestWithUpstreamURL(req, forwardURL)
 	timeouts := defaultTimeouts()
 	dialCtxFunc := retryDialContextFunc(timeouts)
-	uh := NewUpstream(newTestTransport(dialCtxFunc), newFakeClient(), config.Tracing{}, timeouts.ResponseHeader)
+	uh := NewUpstream(newTestTransport(dialCtxFunc), newFakeClient(), config.Tracing{}, timeouts.ResponseHeader, nil, false)
 	uh.ServeHTTP(res, req)
 
 	r.True(
@@ -207,7 +207,7 @@ func TestForwarderHeaderTimeout(t *testing.T) {
 	res, req, err := reqAndRes("/testfwd")
 	r.NoError(err)
 	req = util.RequestWithUpstreamURL(req, originURL)
-	uh := NewUpstream(newTestTransport(dialCtxFunc), newFakeClient(), config.Tracing{}, timeouts.ResponseHeader)
+	uh := NewUpstream(newTestTransport(dialCtxFunc), newFakeClient(), config.Tracing{}, timeouts.ResponseHeader, nil, false)
 	uh.ServeHTTP(res, req)
 
 	r.Equal(http.StatusGatewayTimeout, res.Code)
@@ -251,7 +251,7 @@ func TestForwarderWaitsForSlowOrigin(t *testing.T) {
 	res, req, err := reqAndRes(path)
 	r.NoError(err)
 	req = util.RequestWithUpstreamURL(req, originURL)
-	uh := NewUpstream(newTestTransport(dialCtxFunc), newFakeClient(), config.Tracing{}, timeouts.ResponseHeader)
+	uh := NewUpstream(newTestTransport(dialCtxFunc), newFakeClient(), config.Tracing{}, timeouts.ResponseHeader, nil, false)
 	uh.ServeHTTP(res, req)
 	// wait for the goroutine above to finish, with a little cusion
 	ensureSignalBeforeTimeout(originWaitCh, originDelay*2)
@@ -267,7 +267,7 @@ func TestForwarderConnectionRetryAndTimeout(t *testing.T) {
 	const requestTimeout = 500 * time.Millisecond
 	timeouts := defaultTimeouts()
 	dialCtxFunc := retryDialContextFunc(timeouts)
-	uh := NewUpstream(newTestTransport(dialCtxFunc), newFakeClient(), config.Tracing{}, timeouts.ResponseHeader)
+	uh := NewUpstream(newTestTransport(dialCtxFunc), newFakeClient(), config.Tracing{}, timeouts.ResponseHeader, nil, false)
 
 	res, req, err := reqAndRes("/test")
 	r.NoError(err)
@@ -309,7 +309,7 @@ func TestForwarderClientCancelled(t *testing.T) {
 
 	timeouts := defaultTimeouts()
 	dialCtxFunc := retryDialContextFunc(timeouts)
-	uh := NewUpstream(newTestTransport(dialCtxFunc), newFakeClient(), config.Tracing{}, timeouts.ResponseHeader)
+	uh := NewUpstream(newTestTransport(dialCtxFunc), newFakeClient(), config.Tracing{}, timeouts.ResponseHeader, nil, false)
 
 	res, req, err := reqAndRes("/test")
 	r.NoError(err)
@@ -353,7 +353,7 @@ func TestForwardRequestRedirectAndHeaders(t *testing.T) {
 	res, req, err := reqAndRes("/testfwd")
 	r.NoError(err)
 	req = util.RequestWithUpstreamURL(req, srvURL)
-	uh := NewUpstream(newTestTransport(dialCtxFunc), newFakeClient(), config.Tracing{}, timeouts.ResponseHeader)
+	uh := NewUpstream(newTestTransport(dialCtxFunc), newFakeClient(), config.Tracing{}, timeouts.ResponseHeader, nil, false)
 	uh.ServeHTTP(res, req)
 	r.Equal(301, res.Code)
 	r.Equal("abc123.com", res.Header().Get("Location"))
@@ -410,7 +410,7 @@ func TestUpstreamPreservesXForwardedHeaders(t *testing.T) {
 			}
 
 			// Configure the Upstream and send a dummy request
-			upstream := NewUpstream(http.DefaultTransport.(*http.Transport), newFakeClient(), config.Tracing{}, 500*time.Millisecond)
+			upstream := NewUpstream(http.DefaultTransport.(*http.Transport), newFakeClient(), config.Tracing{}, 500*time.Millisecond, nil, false)
 
 			req := httptest.NewRequest("GET", "/test", nil)
 			if tt.forwardedFor != "" {
@@ -488,7 +488,7 @@ func TestUpstreamPreservesRawQuery(t *testing.T) {
 			backendURL, err := url.Parse(backend.URL)
 			require.NoError(t, err)
 
-			upstream := NewUpstream(http.DefaultTransport.(*http.Transport), newFakeClient(), config.Tracing{}, 500*time.Millisecond)
+			upstream := NewUpstream(http.DefaultTransport.(*http.Transport), newFakeClient(), config.Tracing{}, 500*time.Millisecond, nil, false)
 
 			target := "/test"
 			if rawQuery != "" {
@@ -539,7 +539,7 @@ func TestUpstream_RouteSpecResponseHeaderOverride(t *testing.T) {
 	ctx := util.ContextWithInterceptorRoute(req.Context(), ir)
 	req = req.WithContext(ctx)
 
-	uh := NewUpstream(newTestTransport(dialCtxFunc), newFakeClient(), config.Tracing{}, timeouts.ResponseHeader)
+	uh := NewUpstream(newTestTransport(dialCtxFunc), newFakeClient(), config.Tracing{}, timeouts.ResponseHeader, nil, false)
 	uh.ServeHTTP(res, req)
 
 	r.Equal(http.StatusGatewayTimeout, res.Code)
@@ -558,7 +558,7 @@ func TestFullDuplexBodyPanic(t *testing.T) {
 		},
 	}
 
-	upstream := NewUpstream(failingTransport, newFakeClient(), config.Tracing{}, 1*time.Second)
+	upstream := NewUpstream(failingTransport, newFakeClient(), config.Tracing{}, 1*time.Second, nil, false)
 
 	targetURL, _ := url.Parse("http://fake-backend:8080")
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -671,7 +671,7 @@ func TestUpstream_AppProtocolTransportSelection(t *testing.T) {
 				},
 			}
 
-			upstream := NewUpstream(http.DefaultTransport.(*http.Transport), fakeClient, config.Tracing{}, 5*time.Second)
+			upstream := NewUpstream(http.DefaultTransport.(*http.Transport), fakeClient, config.Tracing{}, 5*time.Second, nil, false)
 
 			req := httptest.NewRequest(http.MethodGet, "/test", nil)
 			req.ProtoMajor = tc.incomingProtoMajor
@@ -720,7 +720,7 @@ func TestUpstream_AppProtocolFallbackOnMissingService(t *testing.T) {
 		},
 	}
 
-	upstream := NewUpstream(http.DefaultTransport.(*http.Transport), fakeClient, config.Tracing{}, 5*time.Second)
+	upstream := NewUpstream(http.DefaultTransport.(*http.Transport), fakeClient, config.Tracing{}, 5*time.Second, nil, false)
 
 	req := httptest.NewRequest(http.MethodGet, "/test", nil)
 	ctx := util.ContextWithUpstreamURL(req.Context(), backendURL)
@@ -791,7 +791,7 @@ func serveHTTP(w http.ResponseWriter, r *http.Request) {
 	timeouts := defaultTimeouts()
 	dialCtxFunc := retryDialContextFunc(timeouts)
 	transport := newTestTransport(dialCtxFunc)
-	upstream := NewUpstream(transport, newFakeClient(), config.Tracing{Enabled: true}, timeouts.ResponseHeader)
+	upstream := NewUpstream(transport, newFakeClient(), config.Tracing{Enabled: true}, timeouts.ResponseHeader, nil, false)
 
 	upstream.ServeHTTP(w, r)
 }

@@ -37,6 +37,7 @@ This changelog keeps track of work items that have been completed and are ready 
 ### New
 
 - **Interceptor**: Add optional `KEDA_CLUSTER_DOMAIN` to use `{service}.{namespace}.svc.{domain}` for TLS upstream hostnames and SNI when proxy TLS is enabled
+- **Interceptor**: Serve HTTP/3 and WebTransport on the TLS proxy port (UDP alongside TCP) and proxy WebTransport to QUIC backends with a UDP Service port
 - **General**: Add NetworkPolicy examples for securing KEDA HTTP Add-on components ([#1602](https://github.com/kedacore/http-add-on/issues/1602))
 
 ### Improvements

@@ -271,6 +271,27 @@ func run() error {
 			}
 			return nil
 		})
+
+		proxyEg.Go(func() error {
+			servingTLS, watcher, err := BuildServingTLSConfig(ServingTLSOptions{
+				CertificatePath: servingCfg.TLSCertPath,
+				KeyPath:         servingCfg.TLSKeyPath,
+				CertStorePaths:  servingCfg.TLSCertStorePaths,
+			}, tlsPolicyCfg, setupLog)
+			if err != nil {
+				return fmt.Errorf("configuring TLS for HTTP/3: %w", err)
+			}
+			if watcher != nil {
+				proxyEg.Go(func() error {
+					return watcher.Start(proxyCtx)
+				})
+			}
+			setupLog.Info("starting the HTTP/3 proxy server", "port", servingCfg.TLSPort)
+			if err := runHTTP3ProxyServer(proxyCtx, ctrl.Log, queues, readyCache, routingTable, ctrlCache, timeoutCfg, servingCfg, servingCfg.TLSPort, servingTLS, outboundTLS, tracingCfg, instruments, &draining); !util.IsIgnoredErr(err) {
+				return fmt.Errorf("http/3 proxy server: %w", err)
+			}
+			return nil
+		})
 	}
 
 	proxyEg.Go(func() error {
